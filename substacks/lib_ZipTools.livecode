@@ -1,0 +1,102 @@
+script "lib_ZipTools"
+
+
+
+
+
+-------------------------------------------------------------------
+--  extractArchive
+-- DESCRIPTION:
+--     Extract the downloaded Zip file with the different media
+-- PARAMETERS:
+--   pArchive: zip file
+--   pWhere: Foler to extract the files to
+-- CHANGES:
+--   03/06/2016 Gurgen: Created function
+---------------------------------------------------------------------
+command extractArchive pArchive, pWhere, pCallback
+   -- Get the caller object
+   put getCaller() into zipTools["caller"]
+   put pCallback into zipTools["callback"]
+   
+   local tLocation
+   set the itemDel to "/"
+   put pWhere into tLocation
+   if char -1 of tLocation is not "/" then
+      put "/" after tLocation
+   end if
+   
+   -- We assume that our archive has a filename of <archive>.zip
+   put char 1 to -5 of item -1 of pArchive after tLocation
+   
+   -- Make sure that we can extract to a folder that does not exist:
+   set the itemDel to "."
+   if there is a folder tLocation then
+      local tCount
+      put 1 into tCount
+      put "." & tCount after tLocation
+      repeat until there is no folder tLocation
+         add 1 to tCount
+         put tCount into item -1 of tLocation
+      end repeat
+   end if
+   set the itemDel to comma
+   
+   -- Get list of files in zip file
+   revZipOpenArchive pArchive, "read"
+   
+   put revZipEnumerateItems(pArchive) into sZipContents
+   
+   -- Get the number of files to exctract
+   put the number of lines of sZipContents into zipTools["count"]
+   
+   repeat for each line tItem in sZipContents
+      put revZipDescribeItem(pArchive,tItem) into tDetails
+      
+      if char -1 of tItem is "/" then
+         -- we ignore extraction of folders, as libzip doesnt handle folders
+      else if item 6 of tDetails is "deflate" then         
+         put tItem into zipTools["name"]
+         
+         --if tDataInDB is empty then
+         put pWhere & "/" & tItem into tFileLocation
+         
+         revZipExtractItemToFile pArchive, tItem, tFileLocation
+         
+         -- Do not back up files on iOS
+         if the platform is "iphone" then
+            iphoneSetDoNotBackupFile tFileLocation, true
+         end if
+      else
+         -- ignore this item, possibly displaying a message to the user, that this file cannot be extracted
+         -- because its compression type is not supported by this program
+      end if
+      
+      -- Update index
+      add 1 to zipTools["number"]
+      
+      if zipTools["callback"] is not empty then  
+         dispatch zipTools["callback"] to zipTools["caller"] with zipTools["number"], zipTools["name"], zipTools["count"]
+      end if
+   end repeat
+   
+   revZipCloseArchive pArchive
+end extractArchive
+
+
+
+-----------------------------------------------------------------------
+-- getCaller
+-- DESCRIPTION
+--           Returns  the caller object id
+-- PARAMETERS
+-- CHANGES
+-- 11/01/16: Gurgen created
+-----------------------------------------------------------------------
+private function getCaller
+   get item 1 to -3 of line -3 of the executionContexts
+   if there is not an it then
+      delete item -1 of it
+   end if
+   return it
+end getCaller
